@@ -2,9 +2,10 @@ from fastapi import FastAPI, HTTPException, Body, Query
 from pydantic import BaseModel
 import subprocess
 import os
-import aioredis
+import redis.asyncio as aioredis
 import json
 from contextlib import asynccontextmanager
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -13,7 +14,7 @@ async def lifespan(app: FastAPI):
     redis_port = int(os.getenv("REDIS_PORT", 6379))
     redis_user = os.getenv("REDIS_USER", None)
     redis_password = os.getenv("REDIS_PASSWORD", None)
-    redis_client = await aioredis.from_url(
+    redis_client = aioredis.from_url(
         f"redis://{redis_host}:{redis_port}",
         username=redis_user,
         password=redis_password,
@@ -22,7 +23,9 @@ async def lifespan(app: FastAPI):
     yield
     await redis_client.close()
 
+
 app = FastAPI(lifespan=lifespan)
+
 
 class ImapConfig(BaseModel):
     host1: str
@@ -32,9 +35,11 @@ class ImapConfig(BaseModel):
     user2: str
     password2: str
 
+
 @app.get("/")
 async def root():
     return {"message": "imapsync: running"}
+
 
 @app.post("/add_config/{label}")
 async def add_config(label: str, config: ImapConfig):
@@ -47,6 +52,7 @@ async def add_config(label: str, config: ImapConfig):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"message": f"Configuration '{label}' saved."}
+
 
 @app.get("/run/{label}")
 async def run_config(label: str, delete_source: bool = Query(False, description="Delete source emails after sync")):
@@ -74,6 +80,7 @@ async def run_config(label: str, delete_source: bool = Query(False, description=
         return {"label": label, "output": result.stdout}
     except Exception as e:
         return {"label": label, "error": str(e)}
+
 
 @app.get("/runall")
 async def run_all(delete_source: bool = Query(False, description="Delete source emails after sync")):
@@ -106,6 +113,7 @@ async def run_all(delete_source: bool = Query(False, description="Delete source 
 
     return {"results": results}
 
+
 @app.delete("/delete_config/{label}")
 async def delete_config(label: str):
     redis_key = f"imapsync:{label}"
@@ -118,14 +126,17 @@ async def delete_config(label: str):
         raise HTTPException(status_code=500, detail=str(e))
     return {"message": f"Configuration '{label}' deleted."}
 
+
 @app.get("/get_labels")
 async def get_labels():
     labels = [key async for key in redis_client.scan_iter(match="imapsync:*")]
     labels = [label.split("imapsync:")[1] for label in labels]
     return {"labels": labels}
 
+
 @app.post("/run_labels")
-async def run_labels(labels: list[str] = Body(...), delete_source: bool = Query(False, description="Delete source emails after sync")):
+async def run_labels(labels: list[str] = Body(...),
+                     delete_source: bool = Query(False, description="Delete source emails after sync")):
     results = []
     for label in labels:
         redis_key = f"imapsync:{label}"

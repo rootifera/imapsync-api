@@ -1,6 +1,10 @@
 FROM python:3.11-slim
 
-RUN pip install fastapi uvicorn fastapi_utils typing_inspect redis
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 RUN apt update && apt install -y \
     curl \
@@ -40,8 +44,10 @@ RUN apt update && apt install -y \
 RUN curl -L https://raw.githubusercontent.com/imapsync/imapsync/master/imapsync -o /usr/local/bin/imapsync \
     && chmod +x /usr/local/bin/imapsync
 
-COPY app /app
+COPY . /app
+
+ENV PATH="/root/.local/bin:$PATH"
 
 ENV REDIS_HOST=192.168.1.24
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8712"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8712"]
