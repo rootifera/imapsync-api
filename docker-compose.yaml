@@ -1,0 +1,27 @@
+services:
+  imapsync-api:
+    image: rootifera/imapsync-api
+    environment:
+      - REDIS_HOST=192.168.1.24
+      - REDIS_PORT=6379
+      #- REDIS_USER=None
+      #- REDIS_PASSWORD=None
+    networks:
+      - imapsync-network
+    expose:
+      - 8712
+
+  imapsync-web:
+    image: rootifera/imapsync-web
+    ports:
+      - "8889:80"
+    networks:
+      - imapsync-network
+    depends_on:
+      - imapsync-api
+    environment:
+      - API_URL=http://imapsync-api:8712
+
+networks:
+  imapsync-network:
+    driver: bridge

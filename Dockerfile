@@ -48,6 +48,4 @@ COPY . /app
 
 ENV PATH="/root/.local/bin:$PATH"
 
-ENV REDIS_HOST=192.168.1.24
-
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8712"]

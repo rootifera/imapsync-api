@@ -34,6 +34,7 @@ class ImapConfig(BaseModel):
     host2: str
     user2: str
     password2: str
+    delete_source: bool = False
 
 
 @app.get("/")
@@ -48,20 +49,13 @@ async def add_config(label: str, config: ImapConfig):
     if exists:
         raise HTTPException(status_code=400, detail="Configuration with this label already exists.")
     try:
-        await redis_client.set(redis_key, json.dumps(config.model_dump()))
+        await redis_client.set(redis_key, json.dumps(config.model_dump()))  # Save delete_source value
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"message": f"Configuration '{label}' saved."}
 
 
-@app.get("/run/{label}")
-async def run_config(label: str, delete_source: bool = Query(False, description="Delete source emails after sync")):
-    redis_key = f"imapsync:{label}"
-    config_data = await redis_client.get(redis_key)
-    if not config_data:
-        raise HTTPException(status_code=404, detail="Configuration not found.")
-
-    config = json.loads(config_data)
+def generate_imapsync_command(config: dict, delete_source: bool) -> list:
     command = [
         "/usr/local/bin/imapsync",
         "--host1", config["host1"],
@@ -71,9 +65,20 @@ async def run_config(label: str, delete_source: bool = Query(False, description=
         "--user2", config["user2"],
         "--password2", config["password2"]
     ]
-
     if delete_source:
         command.append("--delete1")
+    return command
+
+
+@app.get("/run/{label}")
+async def run_config(label: str):
+    redis_key = f"imapsync:{label}"
+    config_data = await redis_client.get(redis_key)
+    if not config_data:
+        raise HTTPException(status_code=404, detail="Configuration not found.")
+
+    config = json.loads(config_data)
+    command = generate_imapsync_command(config, config["delete_source"])
 
     try:
         result = subprocess.run(command, capture_output=True, text=True)
@@ -83,7 +88,7 @@ async def run_config(label: str, delete_source: bool = Query(False, description=
 
 
 @app.get("/runall")
-async def run_all(delete_source: bool = Query(False, description="Delete source emails after sync")):
+async def run_all():
     labels = [key async for key in redis_client.scan_iter(match="imapsync:*")]
     if not labels:
         raise HTTPException(status_code=404, detail="No configurations found.")
@@ -92,18 +97,7 @@ async def run_all(delete_source: bool = Query(False, description="Delete source 
     for label in labels:
         config_data = await redis_client.get(label)
         config = json.loads(config_data)
-        command = [
-            "/usr/local/bin/imapsync",
-            "--host1", config["host1"],
-            "--user1", config["user1"],
-            "--password1", config["password1"],
-            "--host2", config["host2"],
-            "--user2", config["user2"],
-            "--password2", config["password2"]
-        ]
-
-        if delete_source:
-            command.append("--delete1")
+        command = generate_imapsync_command(config, config["delete_source"])
 
         try:
             result = subprocess.run(command, capture_output=True, text=True)
@@ -135,8 +129,7 @@ async def get_labels():
 
 
 @app.post("/run_labels")
-async def run_labels(labels: list[str] = Body(...),
-                     delete_source: bool = Query(False, description="Delete source emails after sync")):
+async def run_labels(labels: list[str] = Body(...)):
     results = []
     for label in labels:
         redis_key = f"imapsync:{label}"
@@ -146,18 +139,7 @@ async def run_labels(labels: list[str] = Body(...),
             continue
 
         config = json.loads(config_data)
-        command = [
-            "/usr/local/bin/imapsync",
-            "--host1", config["host1"],
-            "--user1", config["user1"],
-            "--password1", config["password1"],
-            "--host2", config["host2"],
-            "--user2", config["user2"],
-            "--password2", config["password2"]
-        ]
-
-        if delete_source:
-            command.append("--delete1")
+        command = generate_imapsync_command(config, config["delete_source"])
 
         try:
             result = subprocess.run(command, capture_output=True, text=True)
